@@ -11,8 +11,8 @@ import concurrent.duration.Duration
 import collection.breakOut
 
 package object sliding {
-  val SEED  = 0L
-  val random = new scala.util.Random(SEED)
+  val SEED    = 130228L
+  val random  = new scala.util.Random(SEED)
 
   def file(path: String) = new File(path)
 
@@ -91,9 +91,28 @@ package object sliding {
     def moveTo(start: Long): AudioRegion = r.copy(span = span(start, start + r.span.length))
   }
 
-  def exprand(lo: Double, hi: Double): Double = {
+  def linrand(lo: Double, hi: Double): Double = {
     import synth._
     val d = random.nextDouble()
     d.linlin(0, 1, lo, hi)
+  }
+
+  def exprand(lo: Double, hi: Double): Double = {
+    import synth._
+    val d = random.nextDouble()
+    d.linexp(0, 1, lo, hi)
+  }
+
+  /** my invention -- pushes to the boundaries. bit cheesy (deviation is discontinuous at 0.5) */
+  // see fO EaseInOutAtan for better function
+  def powexprand(lo: Double, hi: Double, pow: Double = 4.0): Double = {
+    import synth._
+    val d = random.nextDouble()
+    val w = if (d < 0.5) {
+      math.pow(d * 2, pow) * 0.5
+    } else {
+      math.pow((d - 0.5) * 2, 1.0/pow) * 0.5 + 0.5
+    }
+    w.linexp(0, 1, lo, hi)
   }
 }

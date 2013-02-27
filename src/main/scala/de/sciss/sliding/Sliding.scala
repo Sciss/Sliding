@@ -3,12 +3,14 @@ package de.sciss.sliding
 import de.sciss.strugatzki.{FeatureExtraction => Extr, FeatureSegmentation => Segm}
 import de.sciss.synth.io.AudioFile
 import xml.XML
-import de.sciss.kontur.session.{AudioRegion, MatrixDiffusion, AudioTrack, BasicTimeline, AudioFileElement, Session}
+import de.sciss.kontur.session.{FadeSpec, AudioRegion, MatrixDiffusion, AudioTrack, BasicTimeline, AudioFileElement, Session}
 import de.sciss.kontur.util.Matrix2D
 import collection.breakOut
 import collection.immutable.{IndexedSeq => IIdxSeq}
 import java.io.File
 import de.sciss.io.Span
+import de.sciss.synth
+import synth._
 
 object Sliding {
   println("Rendering...\n")
@@ -30,16 +32,28 @@ object Sliding {
 
    */
 
-  val avgDur            = 90.0
-  val minDur            = 60.0
-  val minGap            =  2.0
-  val maxGap            = 16.0
+  // ---- parameters of the composition ----
+
+  val avgDur            = 90.0        // average duration of chunk in seconds
+  val minDur            = 60.0        // minimum duration of chunk in seconds
+  val minGap            =  6.0        // minimum duration of gap between chunks in seconds
+  val maxGap            = 20.0        // maximum duration of gap between chunks in seconds
+  val outsideGain       = 0.0.dbamp   // gain factor applied to outside chunks
+  val insideGain        = 0.0.dbamp   // gain factor applied to inside chunks
+  val minFadeIn         = 0.02
+  val maxFadeIn         = 30.0
+  val minFadeOut        = 0.01
+  val maxFadeOut        = 0.02
+
+  // ---- basic configuration ----
 
   val sampleRate        = 44100.0
-
   val baseF             = file("audio_work")
-  val insideF           = (baseF / "inside" ).files(_.extension == ".aif").sortBy(_.name)
+
+  // ---- derived settings ----
+
   val outsideF          = (baseF / "outside").files(_.extension == ".aif").sortBy(_.name)
+  val insideF           = (baseF / "inside" ).files(_.extension == ".aif").sortBy(_.name)
   val renderF           = baseF / "render"
 
   val minFrames         = (minDur * sampleRate).toLong
@@ -100,9 +114,9 @@ object Sliding {
       res
     }
 
-    val pos   = 0L +: segm.map(_.pos).sorted /* ! */ :+ spec.numFrames
-//    assert(pos == pos.sorted)
-    val spans = pos.sliding(2, 1).map { case Seq(start, stop) => span(start, stop) }
+    val pos     = 0L +: segm.map(_.pos).sorted /* ! */ :+ spec.numFrames
+    val spans0  = pos.sliding(2, 1).map { case Seq(start, stop) => span(start, stop) }
+    val spans   = spans0.filter(_.length >= minFrames)  // the last artifically added span might be too short
     spans.toIndexedSeq
   }
 
@@ -119,8 +133,13 @@ object Sliding {
     val afe   = audioFElems(f.name)
     val name  = f.nameWithoutExtension
     sps.zipWithIndex.map { case (sp, idx) =>
+      val fdInFr  = (powexprand(minFadeIn, maxFadeIn) * sampleRate + 0.5).toLong
+//      val fdIn    = FadeSpec(fdInFr, sinShape)
+      val fdIn    = FadeSpec(fdInFr, expShape, floor = -40.dbamp)
+      val fdOutFr = (powexprand(minFadeOut, maxFadeOut) * sampleRate + 0.5).toLong
+      val fdOut   = FadeSpec(fdOutFr, welchShape)
       AudioRegion(span = span(0L, sp.length), name = s"$name.${idx+1}", audioFile = afe, offset = sp.start, gain = 1f,
-        fadeIn = None, fadeOut = None)
+        fadeIn = Some(fdIn), fadeOut = Some(fdOut))
     }
   }
 
@@ -134,14 +153,11 @@ object Sliding {
   flat.foreach { r =>
     val r1 = r.moveTo(cursor)
     trail.add(r1)
-    val gap = (exprand(minGap, maxGap) * sampleRate + 0.5).toLong
+    val gap = (linrand(minGap, maxGap) * sampleRate + 0.5).toLong
     cursor  = r1.span.stop + gap
-//    println("+ SPAN " + r1.span + "; GAP = " + gap + "; new CURSOR = " + cursor)
   }
 
   tl.span = span(0L, cursor)
   doc.save(renderF / "kontur_session.xml")
   println("\nSession saved.")
-
-//  case class AudioFileSelection(f: File, span: Span)
 }
