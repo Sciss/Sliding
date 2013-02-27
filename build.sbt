@@ -11,7 +11,8 @@ homepage <<= name { n => Some(url("https://github.com/Sciss/" + n)) }
 licenses := Seq("GPL v2+" -> url("http://www.gnu.org/licenses/gpl-2.0.txt"))
 
 libraryDependencies := Seq(
-  "de.sciss" %% "strugatzki" % "1.5.+"
+  "de.sciss" %% "strugatzki" % "1.5.+",
+  "de.sciss" %% "kontur" % "1.1.+"
 )
 
 retrieveManaged := true

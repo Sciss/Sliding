@@ -3,8 +3,11 @@ package de.sciss.sliding
 import de.sciss.strugatzki.{FeatureExtraction => Extr, FeatureSegmentation => Segm}
 import de.sciss.synth.io.AudioFile
 import xml.XML
+import de.sciss.kontur.session.{AudioFileElement, Session}
 
-object Sliding extends App {
+object Sliding {
+  println("Rendering...\n")
+
   /*
 
   - segmentation of inside/outside files
@@ -24,6 +27,8 @@ object Sliding extends App {
 
   val avgDur            = 90.0
   val minDur            = 60.0
+  val minGap            =  2.0
+  val maxGap            = 16.0
 
   val sampleRate        = 44100.0
 
@@ -39,7 +44,9 @@ object Sliding extends App {
   val cExtr             = Extr.Config()
   cSegm.minSpacing      = minFrames
 
-  (insideF ++ outsideF).foreach { audioInF =>
+  val doc               = Session.newEmpty
+
+  (insideF ++ outsideF).sortBy(_.name).foreach { audioInF =>
     val name            = audioInF.nameWithoutExtension
     val featF           = (renderF / name).updateExtension("_feat.aif")
     val metaF           = featF.updateExtension(".xml")
@@ -67,7 +74,17 @@ object Sliding extends App {
       res
     }
 
+    val pos = 0L +: segm.map(_.pos) :+ spec.numFrames
+//    pos.sliding(2, 1).map { case Seq(start, stop) =>
+
 //    println(s"\nname = $name")
 //    segm.foreach(println)
+
+    val afe = AudioFileElement.fromPath(doc, audioInF)
+    doc.audioFiles.insert(doc.audioFiles.size, afe)
   }
+
+  doc.save(renderF / "kontur_session.xml")
+
+//  case class AudioFileSelection(f: File, span: Span)
 }
