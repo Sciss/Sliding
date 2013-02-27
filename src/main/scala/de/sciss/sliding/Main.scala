@@ -1,10 +1,8 @@
 package de.sciss.sliding
 
-import swing.Swing
-
 object Main extends App {
-  Swing.onEDT {
+//  swing.Swing.onEDT {
     Application.instance
     Sliding
-  }
+//  }
 }

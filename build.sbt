@@ -22,6 +22,6 @@ scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature")
 // ---- console ----
 
 initialCommands in console :=
-"""import de.sciss.osc
+"""import de.sciss.sliding._
 """.stripMargin
 

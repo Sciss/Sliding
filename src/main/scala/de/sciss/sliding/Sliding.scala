@@ -3,7 +3,12 @@ package de.sciss.sliding
 import de.sciss.strugatzki.{FeatureExtraction => Extr, FeatureSegmentation => Segm}
 import de.sciss.synth.io.AudioFile
 import xml.XML
-import de.sciss.kontur.session.{AudioFileElement, Session}
+import de.sciss.kontur.session.{AudioRegion, MatrixDiffusion, AudioTrack, BasicTimeline, AudioFileElement, Session}
+import de.sciss.kontur.util.Matrix2D
+import collection.breakOut
+import collection.immutable.{IndexedSeq => IIdxSeq}
+import java.io.File
+import de.sciss.io.Span
 
 object Sliding {
   println("Rendering...\n")
@@ -33,8 +38,8 @@ object Sliding {
   val sampleRate        = 44100.0
 
   val baseF             = file("audio_work")
-  val insideF           = (baseF / "inside" ).files(_.extension == ".aif")
-  val outsideF          = (baseF / "outside").files(_.extension == ".aif")
+  val insideF           = (baseF / "inside" ).files(_.extension == ".aif").sortBy(_.name)
+  val outsideF          = (baseF / "outside").files(_.extension == ".aif").sortBy(_.name)
   val renderF           = baseF / "render"
 
   val minFrames         = (minDur * sampleRate).toLong
@@ -44,9 +49,30 @@ object Sliding {
   val cExtr             = Extr.Config()
   cSegm.minSpacing      = minFrames
 
-  val doc               = Session.newEmpty
+  // ---- initialise Kontur session ----
 
-  (insideF ++ outsideF).sortBy(_.name).foreach { audioInF =>
+  val doc               = Session.newEmpty
+  val tl                = BasicTimeline.newEmpty(doc)
+  val trk               = new AudioTrack(doc)
+  val trail             = trk.trail
+  val diff              = new MatrixDiffusion(doc)
+  diff.numInputChannels = 2
+  diff.numOutputChannels= 2
+  diff.matrix           = Matrix2D.fromSeq(Seq(Seq(1f, 0f), Seq(0f, 1f)))
+  doc.diffusions.insert(0, diff)
+  trk.diffusion         = Some(diff)
+  tl.tracks.insert(0, trk)
+  doc.timelines.insert(0, tl)
+
+  val audioInFs         = (insideF ++ outsideF)
+  val audioFElems: Map[String, AudioFileElement] = audioInFs.map(audioInF => {
+    val afe = AudioFileElement.fromPath(doc, audioInF)
+    audioInF.name -> afe
+  })(breakOut)
+
+  // ---- segmentation procedure ----
+
+  def spansForFile(audioInF: File): IIdxSeq[Span] = {
     val name            = audioInF.nameWithoutExtension
     val featF           = (renderF / name).updateExtension("_feat.aif")
     val metaF           = featF.updateExtension(".xml")
@@ -74,17 +100,48 @@ object Sliding {
       res
     }
 
-    val pos = 0L +: segm.map(_.pos) :+ spec.numFrames
-//    pos.sliding(2, 1).map { case Seq(start, stop) =>
+    val pos   = 0L +: segm.map(_.pos).sorted /* ! */ :+ spec.numFrames
+//    assert(pos == pos.sorted)
+    val spans = pos.sliding(2, 1).map { case Seq(start, stop) => span(start, stop) }
+    spans.toIndexedSeq
+  }
 
-//    println(s"\nname = $name")
-//    segm.foreach(println)
+  // ---- register all files ----
 
-    val afe = AudioFileElement.fromPath(doc, audioInF)
+  audioFElems.values.foreach { afe =>
     doc.audioFiles.insert(doc.audioFiles.size, afe)
   }
 
+  // ---- segment files and zip spans ----
+
+  def makeRegions(coll: IIdxSeq[File]): IIdxSeq[AudioRegion] = coll.flatMap { f =>
+    val sps   = spansForFile(f)
+    val afe   = audioFElems(f.name)
+    val name  = f.nameWithoutExtension
+    sps.zipWithIndex.map { case (sp, idx) =>
+      AudioRegion(span = span(0L, sp.length), name = s"$name.${idx+1}", audioFile = afe, offset = sp.start, gain = 1f,
+        fadeIn = None, fadeOut = None)
+    }
+  }
+
+  val outsideRegions  = makeRegions(outsideF)
+  val insideRegions   = makeRegions(insideF)
+  val numRegionsH     = math.min(outsideRegions.size, insideRegions.size)
+  val zipped          = thin(outsideRegions, numRegionsH) zip thin(insideRegions, numRegionsH)
+  val flat            = zipped.flatMap { case (a, b) => a :: b :: Nil }
+
+  var cursor = 0L
+  flat.foreach { r =>
+    val r1 = r.moveTo(cursor)
+    trail.add(r1)
+    val gap = (exprand(minGap, maxGap) * sampleRate + 0.5).toLong
+    cursor  = r1.span.stop + gap
+//    println("+ SPAN " + r1.span + "; GAP = " + gap + "; new CURSOR = " + cursor)
+  }
+
+  tl.span = span(0L, cursor)
   doc.save(renderF / "kontur_session.xml")
+  println("\nSession saved.")
 
 //  case class AudioFileSelection(f: File, span: Span)
 }
