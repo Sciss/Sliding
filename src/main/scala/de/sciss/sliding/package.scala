@@ -36,6 +36,7 @@ package object sliding {
       if (arr == null) Vector.empty else arr.toIndexedSeq
     }
     def parent  = f.getParentFile
+    def path    = f.getPath
     def name    = f.getName
     def nameWithoutExtension = {
       val n = name
