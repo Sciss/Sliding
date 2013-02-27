@@ -18,15 +18,17 @@ object Sliding {
   /*
 
   - segmentation of inside/outside files
-  - random shuffling of pieces (so also the transitions inside<->outside will be random)
-    // perhaps keep linear order and just 'zip' both sides, let's try that first
-  - drop random pieces until target duration is not exceeded
+  - 'zipping' of pieces (alternating inside<->outside)
+  - [drop random pieces until target duration is not exceeded]
   - parameters
     - min/max segmentation dur
     - min/max gap dur
     - probability white vs. hard cut
     - min/max white dur
+        // TODO!
+        // the whitening stuff is not necessary, at least for this occasion it doesn't make sense.
     - min/max gain boost before cut
+        // TODO!
     - min/max fade in
     - min/max fade out
 
@@ -40,7 +42,7 @@ object Sliding {
   val maxGap            = 20.0        // maximum duration of gap between chunks in seconds
   val outsideGain       = 0.0.dbamp   // gain factor applied to outside chunks
   val insideGain        = 0.0.dbamp   // gain factor applied to inside chunks
-  val minFadeIn         = 0.02
+  val minFadeIn         = 20.0
   val maxFadeIn         = 30.0
   val minFadeOut        = 0.01
   val maxFadeOut        = 0.02
@@ -133,10 +135,12 @@ object Sliding {
     val afe   = audioFElems(f.name)
     val name  = f.nameWithoutExtension
     sps.zipWithIndex.map { case (sp, idx) =>
-      val fdInFr  = (powexprand(minFadeIn, maxFadeIn) * sampleRate + 0.5).toLong
+//      val fdInFr  = (powexprand(minFadeIn, maxFadeIn) * sampleRate + 0.5).toLong
+      val fdInFr  = (exprand(minFadeIn, maxFadeIn) * sampleRate + 0.5).toLong
 //      val fdIn    = FadeSpec(fdInFr, sinShape)
       val fdIn    = FadeSpec(fdInFr, expShape, floor = -40.dbamp)
-      val fdOutFr = (powexprand(minFadeOut, maxFadeOut) * sampleRate + 0.5).toLong
+//      val fdOutFr = (powexprand(minFadeOut, maxFadeOut) * sampleRate + 0.5).toLong
+      val fdOutFr = (exprand(minFadeOut, maxFadeOut) * sampleRate + 0.5).toLong
       val fdOut   = FadeSpec(fdOutFr, welchShape)
       AudioRegion(span = span(0L, sp.length), name = s"$name.${idx+1}", audioFile = afe, offset = sp.start, gain = 1f,
         fadeIn = Some(fdIn), fadeOut = Some(fdOut))
