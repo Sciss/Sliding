@@ -25,10 +25,8 @@ object Sliding {
     - min/max gap dur
     - probability white vs. hard cut
     - min/max white dur
-        // TODO!
         // the whitening stuff is not necessary, at least for this occasion it doesn't make sense.
     - min/max gain boost before cut
-        // TODO!
     - min/max fade in
     - min/max fade out
 
@@ -46,6 +44,12 @@ object Sliding {
   val maxFadeIn         = 30.0
   val minFadeOut        = 0.01
   val maxFadeOut        = 0.02
+
+  val useBoost          = true        // whether to apply slight boost before cut offs
+  val minBoostGain      = 0.dbamp
+  val maxBoostGain      = 3.dbamp
+  val minBoostDur       = 1.0         // seconds
+  val maxBoostDur       = 4.0         // seconds
 
   // ---- basic configuration ----
 
@@ -75,10 +79,22 @@ object Sliding {
   diff.numInputChannels = 2
   diff.numOutputChannels= 2
   diff.matrix           = Matrix2D.fromSeq(Seq(Seq(1f, 0f), Seq(0f, 1f)))
+  diff.name             = "Stereo"
   doc.diffusions.insert(0, diff)
+  trk.name              = "T1"
   trk.diffusion         = Some(diff)
   tl.tracks.insert(0, trk)
   doc.timelines.insert(0, tl)
+
+  val trkBoost  = if (useBoost) {
+    val res       = new AudioTrack(doc)
+    res.name      = "T2"
+    res.diffusion = Some(diff)
+    tl.tracks.insert(1, res)
+    res
+  } else {
+    trk
+  }
 
   val audioInFs         = (insideF ++ outsideF)
   val audioFElems: Map[String, AudioFileElement] = audioInFs.map(audioInF => {
@@ -157,6 +173,25 @@ object Sliding {
   flat.foreach { r =>
     val r1 = r.moveTo(cursor)
     trail.add(r1)
+
+    if (useBoost) {
+      val boostGain = exprand(minBoostGain, maxBoostGain)
+      val addGain   = boostGain - 1.0
+      if (addGain > -30.dbamp) {
+        val boostDur    = exprand(minBoostDur, maxBoostDur)
+        val maxFrames   = r1.span.length - r1.fadeIn.map(_.numFrames).getOrElse(0L)
+        val fadeOutLen  = r1.fadeOut.map(_.numFrames).getOrElse(0L)
+        val minFrames   = fadeOutLen + 100
+        val boostFrames = math.min(maxFrames, (boostDur * sampleRate + 0.5).toLong)
+        if (boostFrames >= minFrames) {
+          val boostOff = r1.span.length - boostFrames
+          val r2a = r1.moveStart(boostOff)
+          val r2  = r2a.copy(fadeIn = Some(FadeSpec(boostFrames - fadeOutLen, expShape, floor = -40.dbamp)))
+          trkBoost.trail.add(r2)
+        }
+      }
+    }
+
     val gap = (linrand(minGap, maxGap) * sampleRate + 0.5).toLong
     cursor  = r1.span.stop + gap
   }
