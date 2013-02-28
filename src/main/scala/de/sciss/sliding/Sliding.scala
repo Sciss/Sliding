@@ -45,7 +45,7 @@ object Sliding {
   val minFadeOut        = 0.01
   val maxFadeOut        = 0.02
 
-  val useBoost          = true        // whether to apply slight boost before cut offs
+  val useBoost          = false // true        // whether to apply slight boost before cut offs
   val minBoostGain      = 0.dbamp
   val maxBoostGain      = 3.dbamp
   val minBoostDur       = 1.0         // seconds
